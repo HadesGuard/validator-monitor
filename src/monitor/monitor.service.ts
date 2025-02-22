@@ -28,23 +28,34 @@ export class MonitorService {
     const externalRpcServer = this.configService.get<string>(
       'EXTERNAL_RPC_SERVER',
     );
-    try {
-      const response = await axios.get(
-        `${externalRpcServer}/block?height=${blockHeight}`,
-      );
-      return response.data.result.block.last_commit.signatures.map(
-        (sig) => sig.validator_address,
-      );
-    } catch (error) {
-      console.error(
-        `❌ Error fetching signatures for block ${blockHeight}:`,
-        error.message,
-      );
-      return [];
+    const maxRetries = 3;
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      try {
+        const response = await axios.get(
+          `${externalRpcServer}/block?height=${blockHeight}`,
+        );
+        return response.data.result.block.last_commit.signatures.map(
+          (sig) => sig.validator_address,
+        );
+      } catch (error) {
+        attempts++;
+        console.error(
+          `❌ Error fetching signatures for block ${blockHeight} (attempt ${attempts}):`,
+          error.message,
+        );
+        if (attempts >= maxRetries) {
+          console.error(
+            `❌ Failed to fetch signatures after ${maxRetries} attempts.`,
+          );
+          return [];
+        }
+      }
     }
   }
 
-  @Cron('*/5 * * * *') // Chạy mỗi 15 phút
+  @Cron('*/5 * * * *') // Chạy mỗi 5 phút
   async checkNodeStatus() {
     console.log('🔍 Checking Namada node status...');
 
