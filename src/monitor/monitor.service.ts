@@ -44,7 +44,7 @@ export class MonitorService {
     }
   }
 
-  @Cron('*/1 * * * *') // Chạy mỗi 15 phút
+  @Cron('*/5 * * * *') // Chạy mỗi 15 phút
   async checkNodeStatus() {
     console.log('🔍 Checking Namada node status...');
 
