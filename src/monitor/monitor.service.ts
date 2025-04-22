@@ -25,32 +25,35 @@ export class MonitorService {
   }
 
   private async getSignatures(blockHeight: number) {
-    const externalRpcServer = this.configService.get<string>(
-      'EXTERNAL_RPC_SERVER',
-    );
+    const externalRpcServers = this.configService
+      .get<string>('EXTERNAL_RPC_SERVER')
+      .split(',');
     const maxRetries = 3;
     let attempts = 0;
 
     while (attempts < maxRetries) {
-      try {
-        const response = await axios.get(
-          `${externalRpcServer}/block?height=${blockHeight}`,
-        );
-        return response.data.result.block.last_commit.signatures.map(
-          (sig) => sig.validator_address,
-        );
-      } catch (error) {
-        attempts++;
-        console.error(
-          `❌ Error fetching signatures for block ${blockHeight} (attempt ${attempts}):`,
-          error.message,
-        );
-        if (attempts >= maxRetries) {
-          console.error(
-            `❌ Failed to fetch signatures after ${maxRetries} attempts.`,
+      for (const rpcServer of externalRpcServers) {
+        try {
+          const response = await axios.get(
+            `${rpcServer}/block?height=${blockHeight}`,
           );
-          return [];
+          return response.data.result.block.last_commit.signatures.map(
+            (sig) => sig.validator_address,
+          );
+        } catch (error) {
+          console.error(
+            `❌ Error fetching signatures from ${rpcServer} for block ${blockHeight}:`,
+            error.message,
+          );
+          continue;
         }
+      }
+      attempts++;
+      if (attempts >= maxRetries) {
+        console.error(
+          `❌ Failed to fetch signatures after trying all RPC servers ${maxRetries} times.`,
+        );
+        return [];
       }
     }
   }
@@ -60,9 +63,9 @@ export class MonitorService {
     console.log('🔍 Checking Namada node status...');
 
     const rpcServer = this.configService.get<string>('RPC_SERVER');
-    const externalRpcServer = this.configService.get<string>(
-      'EXTERNAL_RPC_SERVER',
-    );
+    const externalRpcServers = this.configService
+      .get<string>('EXTERNAL_RPC_SERVER')
+      .split(',');
     const blockGapAlarm = this.configService.get<number>('BLOCK_GAP_ALARM');
     const maxMissedBlocks = this.configService.get<number>('MAX_MISSED_BLOCKS');
 
@@ -74,9 +77,17 @@ export class MonitorService {
     const validatorAddress = nodeData.validator_info.address;
     const votingPower = parseInt(nodeData.validator_info.voting_power);
 
-    // Kiểm tra Block Height
-    const externalData = await this.fetchData(`${externalRpcServer}/status`);
-    if (!externalData) return;
+    // Kiểm tra Block Height với các RPC servers
+    let externalData = null;
+    for (const rpcServer of externalRpcServers) {
+      externalData = await this.fetchData(`${rpcServer}/status`);
+      if (externalData) break;
+    }
+
+    if (!externalData) {
+      console.error('❌ Failed to fetch data from all external RPC servers');
+      return;
+    }
 
     const expectedBlockHeight = parseInt(
       externalData.sync_info.latest_block_height,
